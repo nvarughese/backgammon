@@ -34,54 +34,56 @@ class Backgammon:
             self.last_dice = [d1, d2] #, d1, d2] # for the moment do not count doubles
         print 'dice rolled as ', d1, d2
 
-    def calc_legal_next_states_white_move(self):
-        lowest_pips = self.white_pips
-        
+    def get_valid_and_state(self, state, colour, counter_posn, dice_roll, in_last_quarter):
+        ############## double check this function, didnt have time to finish
+        colour_counter_str = {'white': 'white_counters', 'black': 'black_counters'}[colour]
+        opp_colour_counter_str = {'white': 'black_counters', 'black': 'white_counters'}[colour]
+        opp_colour_home_posn = {'white': 25, 'black': 0}[colour]  # also used for colour_end_posn
+        colour_end_posn = opp_colour_home_posn
+
+        if state[colour_counter_str][counter_posn] <= 0:
+            return False, state  # cannot move a counter from a point with no counters
+
+        if state[colour_counter_str][0] > 0 and counter_posn != 0:
+            return False, state  # if there is a counter off the board you need to move it first
+
+        if counter_posn + dice_roll <= 24 and state['black_counters'][counter_posn + dice_roll] > 1:
+            return False, state  # cannot move to a point with 2 or more opposing counters
+
+        if not in_last_quarter and counter_posn + dice_roll > 24:
+            return False, state  # cannot move a counter off the board unless all your counters in the last quarter
+
+        # in theory a legal move so create a new state to update
+        new_state = {'white_counters': copy.copy(state['white_counters']),
+                     'black_counters': copy.copy(state['black_counters'])}
+        if state[opp_colour_counter_str][counter_posn + dice_roll] == 1:
+            new_state[opp_colour_counter_str][counter_posn + dice_roll] = 0
+            new_state[opp_colour_counter_str][opp_colour_home_posn] += 1  # if opponents pieces jumped on send to start
+        if counter_posn + dice_roll > 24:
+            new_state['white_counters'][colour_end_posn] += 1
+        else:
+            new_state['white_counters'][counter_posn + dice_roll] += 1
+        new_state['white_counters'][counter_posn] -= 1
+        return True, new_state
+
+    def calc_legal_next_states(self, colour):
+        lowest_pips = {'white': self.white_pips, 'black': self.black_pips}[colour]
         if len(self.last_dice) == 2:
-            in_last_quarter_start = self.all_counters_in_last_quarter(self.state['white_counters'][:], 'white')
+            in_last_quarter_start = self.all_counters_in_last_quarter(self.state[colour + '_counters'][:], colour)
             for move_order in [[0, 1], [1, 0]]:
                 first_dice = self.last_dice[move_order[0]]
                 second_dice = self.last_dice[move_order[1]]
-                for i in range(25):  # this means move counter in position i
-                    if self.state['white_counters'][i] <= 0:
-                        continue  # cannot move a counter from a point with no counters
-                    if self.state['white_counters'][0] > 0 and i != 0:
-                        continue  # if there is a counter off the board you need to move it first
-                    if i + first_dice <= 24 and self.state['black_counters'][i + first_dice] > 1:
-                        continue  # cannot move to a point with 2 or more opposing counters
-                    if not in_last_quarter_start and i + first_dice > 24:
-                        continue  # cannot move a counter off the board unless all your counters in the last quarter
-                    # in theory a legal move so create a new state to update
-                    new_state = {'white_counters': copy.copy(self.state['white_counters']),
-                                   'black_counters': copy.copy(self.state['black_counters'])}
-                    if self.state['black_counters'][i + first_dice] == 1:
-                        new_state['black_counters'][i + first_dice] == 0
-                        new_state['black_counters'][25] += 1  # if opponents pieces jumped on send to start
-                    if i + first_dice > 24:
-                        new_state['white_counters'][25] += 1
-                    else:
-                        new_state['white_counters'][i + first_dice] += 1
-                    new_state['white_counters'][i] -= 1
+                for first_counter_posn in range(25):  # this means move counter in position i
+                    valid_move, new_state = self.get_valid_and_state(self.state, colour, first_counter_posn, first_dice,
+                                                                     in_last_quarter_start)
+                    if not valid_move:
+                        continue
+                    in_last_quarter_next = self.all_counters_in_last_quarter(self.state[colour + '_counters'][:], colour)
                     for j in range(25):
-                        if new_state['white_counters'][j] <= 0:
-                            continue  # cannot move a counter from a point with no counters
-                        if new_state['white_counters'][0] > 0 and j != 0:
-                            continue  # if there is a counter off the board you need to move it first
-                        if j + second_dice <= 24 and new_state['black_counters'][j + second_dice] > 1:
-                            continue  # cannot move to a point with 2 or more opposing counters
-                        if not in_last_quarter_start and j + second_dice > 24:
-                            continue  # cannot move a counter off the board unless all your counters in the last quarter
-                        # in theory a legal move so create a new state to update
-                        final_state = {'white_counters': copy.copy(new_state['white_counters']),
-                                       'black_counters': copy.copy(new_state['black_counters'])}
-                        if new_state['black_counters'][j + second_dice] == 1:
-                            final_state['black_counters'][j + second_dice] == 0
-                            final_state['black_counters'][25] += 1  # if opponents pieces jumped on send to start
-                        if j + second_dice > 24:
-                            final_state['white_counters'][25] += 1
-                        else:
-                            final_state['white_counters'][j + second_dice] += 1
-                        final_state['white_counters'][j] -= 1
+                        valid_move, new_state = self.get_valid_and_state(self.state, colour, first_counter_posn,
+                                                                         first_dice, in_last_quarter_next)
+                        if not valid_move:
+                            continue
                         print '\n\nfinal state option, display below, pips = ', self.return_pips(final_state)
                         print 'move posn ', i, ' counter ', first_dice, ' places, move posn ', j, ' counter ', second_dice, ' places'
                         self.print_temp_board(final_state)
