@@ -6,7 +6,8 @@ def run():
     bg = Backgammon()
     bg.print_board()
     bg.roll_dice()
-    bg.calc_legal_next_states_white_move()
+    bg.calc_legal_next_states('white')
+    bg.calc_legal_next_states('black')
     print 'bg.white_pips, bg.black_pips = ', bg.white_pips, bg.black_pips
 
 
@@ -38,16 +39,19 @@ class Backgammon:
         ############## double check this function, didnt have time to finish
         colour_counter_str = {'white': 'white_counters', 'black': 'black_counters'}[colour]
         opp_colour_counter_str = {'white': 'black_counters', 'black': 'white_counters'}[colour]
-        opp_colour_home_posn = {'white': 25, 'black': 0}[colour]  # also used for colour_end_posn
-        colour_end_posn = opp_colour_home_posn
+        home_posn = {'white': 0, 'black': 25}[colour]
+        end_posn = {'white': 25, 'black': 0}[colour]
+        opp_home_posn, opp_end_posn = end_posn, home_posn
+        direction = {'white': 1, 'black': -1}[colour]
 
         if state[colour_counter_str][counter_posn] <= 0:
             return False, state  # cannot move a counter from a point with no counters
 
-        if state[colour_counter_str][0] > 0 and counter_posn != 0:
+        if state[colour_counter_str][home_posn] > 0 and counter_posn != home_posn:
             return False, state  # if there is a counter off the board you need to move it first
 
-        if counter_posn + dice_roll <= 24 and state['black_counters'][counter_posn + dice_roll] > 1:
+        new_counter_posn = counter_posn + (direction * dice_roll)
+        if 1 <= new_counter_posn <= 24 and state[opp_colour_counter_str][new_counter_posn] > 1:
             return False, state  # cannot move to a point with 2 or more opposing counters
 
         if not in_last_quarter and counter_posn + dice_roll > 24:
@@ -56,36 +60,45 @@ class Backgammon:
         # in theory a legal move so create a new state to update
         new_state = {'white_counters': copy.copy(state['white_counters']),
                      'black_counters': copy.copy(state['black_counters'])}
-        if state[opp_colour_counter_str][counter_posn + dice_roll] == 1:
-            new_state[opp_colour_counter_str][counter_posn + dice_roll] = 0
-            new_state[opp_colour_counter_str][opp_colour_home_posn] += 1  # if opponents pieces jumped on send to start
-        if counter_posn + dice_roll > 24:
-            new_state['white_counters'][colour_end_posn] += 1
+        if state[opp_colour_counter_str][new_counter_posn] == 1:
+            new_state[opp_colour_counter_str][new_counter_posn] = 0
+            new_state[opp_colour_counter_str][opp_home_posn] += 1  # if opponents pieces jumped on send to start
+        if new_counter_posn < 1 or new_counter_posn > 24:
+            new_state[colour_counter_str][end_posn] += 1
         else:
-            new_state['white_counters'][counter_posn + dice_roll] += 1
-        new_state['white_counters'][counter_posn] -= 1
+            new_state[colour_counter_str][new_counter_posn] += 1
+        new_state[colour_counter_str][counter_posn] -= 1
         return True, new_state
 
     def calc_legal_next_states(self, colour):
         lowest_pips = {'white': self.white_pips, 'black': self.black_pips}[colour]
+        final_states = []
         if len(self.last_dice) == 2:
             in_last_quarter_start = self.all_counters_in_last_quarter(self.state[colour + '_counters'][:], colour)
             for move_order in [[0, 1], [1, 0]]:
-                first_dice = self.last_dice[move_order[0]]
-                second_dice = self.last_dice[move_order[1]]
-                for first_counter_posn in range(25):  # this means move counter in position i
+                first_dice, second_dice = self.last_dice[move_order[0]], self.last_dice[move_order[1]]
+                for first_counter_posn in range(25):  # this means move counter in position first_counter_posn
                     valid_move, new_state = self.get_valid_and_state(self.state, colour, first_counter_posn, first_dice,
                                                                      in_last_quarter_start)
                     if not valid_move:
                         continue
-                    in_last_quarter_next = self.all_counters_in_last_quarter(self.state[colour + '_counters'][:], colour)
-                    for j in range(25):
-                        valid_move, new_state = self.get_valid_and_state(self.state, colour, first_counter_posn,
-                                                                         first_dice, in_last_quarter_next)
+                    in_last_quarter_next = self.all_counters_in_last_quarter(new_state[colour + '_counters'][:], colour)
+                    for second_counter_posn in range(25):
+                        valid_move, final_state = self.get_valid_and_state(new_state, colour, second_counter_posn,
+                                                                           second_dice, in_last_quarter_next)
                         if not valid_move:
                             continue
-                        print '\n\nfinal state option, display below, pips = ', self.return_pips(final_state)
-                        print 'move posn ', i, ' counter ', first_dice, ' places, move posn ', j, ' counter ', second_dice, ' places'
+                        final_pips = self.return_pips(final_state)[colour]
+                        print '\n\nfinal state option after ', colour, ' move, display below, pips = ', self.return_pips(final_state)
+                        print 'move posn ', first_counter_posn, ' counter ', first_dice, ' places, move posn ', \
+                            second_counter_posn, ' counter ', second_dice, ' places'
+                        if final_pips <= lowest_pips:
+                            if final_pips < lowest_pips:
+                                final_states = [final_state]
+                            else:
+                                # in this part compare the final state to previous states to check for duplicates
+                                for state in final_states:
+                                    if final_state != state:
                         self.print_temp_board(final_state)
 
 
