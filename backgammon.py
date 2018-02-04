@@ -1,15 +1,28 @@
 import random
 import copy
+import pygame
+
+
+LAYOUT = "0-2-o,5-5-x,7-3-x,11-5-o,12-5-x,16-3-o,18-5-o,23-2-x"
+
+NUMCOLS = 24
+QUAD = 6
+OFF = 'off'
+ON = 'on'
 
 
 def run():
     bg = Backgammon()
+    bg.new_game()
+    bg.draw((4, 3))
+    '''
     bg.print_board()
     bg.roll_dice()
     bg.calc_legal_next_states('white')
     bg.calc_legal_next_states('black')
     print 'bg.white_pips, bg.black_pips = ', bg.white_pips, bg.black_pips
-
+    '''
+    raw_input("Press Enter to continue...")
 
 class Backgammon:
     def __init__(self):
@@ -26,6 +39,21 @@ class Backgammon:
         self.calc_pips()
         self.next_states = []
 
+        self.die = QUAD
+        self.layout = "0-2-o,5-5-x,7-3-x,11-5-o,12-5-x,16-3-o,18-5-o,23-2-x"
+        self.players = ['o', 'x']
+        self.grid = [[] for _ in range(NUMCOLS)]
+        self.offPieces = {}
+        self.barPieces = {}
+        self.numPieces = {}
+        for t in self.players:
+            self.barPieces[t] = []
+            self.offPieces[t] = []
+            self.numPieces[t] = 0
+        self.init = True
+        self.roll = None
+
+
     def roll_dice(self):
         d1 = random.randint(1, 6)
         d2 = random.randint(1, 6)
@@ -37,22 +65,25 @@ class Backgammon:
 
     def get_valid_and_state(self, state, colour, counter_posn, dice_roll, in_last_quarter):
         opp_colour = {'white': 'black', 'black': 'white'}[colour]
-        home_posn = {'white': 0, 'black': 25}[colour]
+        start_posn = {'white': 0, 'black': 25}[colour]
         end_posn = {'white': 25, 'black': 0}[colour]
-        opp_home_posn, opp_end_posn = end_posn, home_posn
+        opp_start_posn, opp_end_posn = end_posn, start_posn
         direction = {'white': 1, 'black': -1}[colour]
 
         if state[colour][counter_posn] <= 0:
             return False, state  # cannot move a counter from a point with no counters
 
-        if state[colour][home_posn] > 0 and counter_posn != home_posn:
+        if counter_posn == end_posn:
+            return False, state  # cannot move a counter that is already at the end position
+
+        if state[colour][start_posn] > 0 and counter_posn != start_posn:
             return False, state  # if there is a counter off the board you need to move it first
 
         new_counter_posn = counter_posn + (direction * dice_roll)
         if 1 <= new_counter_posn <= 24 and state[opp_colour][new_counter_posn] > 1:
             return False, state  # cannot move to a point with 2 or more opposing counters
 
-        if not in_last_quarter and counter_posn + dice_roll > 24:
+        if not in_last_quarter and (counter_posn + (direction * dice_roll) > 24 or counter_posn + (direction * dice_roll) < 1):
             return False, state  # cannot move a counter off the board unless all your counters in the last quarter
 
         # in theory a legal move so create a new state to update
@@ -60,7 +91,7 @@ class Backgammon:
                      'black': copy.copy(state['black'])}
         if state[opp_colour][new_counter_posn] == 1:
             new_state[opp_colour][new_counter_posn] = 0
-            new_state[opp_colour][opp_home_posn] += 1  # if opponents pieces jumped on send to start
+            new_state[opp_colour][opp_start_posn] += 1  # if opponents pieces jumped on send to start
         if new_counter_posn < 1 or new_counter_posn > 24:
             new_state[colour][end_posn] += 1
         else:
@@ -81,7 +112,7 @@ class Backgammon:
                     if not valid_move:
                         continue
                     in_last_quarter_next = self.all_counters_in_last_quarter(new_state[colour][:], colour)
-                    for second_counter_posn in range(25):
+                    for second_counter_posn in range(26):
                         valid_move, final_state = self.get_valid_and_state(new_state, colour, second_counter_posn,
                                                                            second_dice, in_last_quarter_next)
                         if not valid_move:
@@ -92,17 +123,24 @@ class Backgammon:
                         print 'move posn ', first_counter_posn, ' counter ', first_dice, ' places, move posn ', \
                             second_counter_posn, ' counter ', second_dice, ' places'
                         self.print_temp_board(final_state)
+                        print 'final_pips, lowest_pips = ', final_pips, lowest_pips
                         if final_pips <= lowest_pips:
                             if final_pips < lowest_pips:
                                 final_states = [final_state]
+                                lowest_pips = final_pips
+                                print 'new low in pips, starting final states from scratch'
                             else:
                                 # in this part compare the final state to previous states to check for duplicates
                                 is_duplicate_state = False
                                 for state in final_states:
                                     if final_state == state:
                                         is_duplicate_state = True
-                                if is_duplicate_state:
-                                    print 'this state is a duplicate'
+                                if not is_duplicate_state:
+                                    print 'not a duplicate state adding to final_states'
+                                    final_states.append(final_state)
+                                else:
+                                    print 'this is a duplicate state, ignoring'
+        print 'final_states = ', final_states
 
 
 
@@ -140,6 +178,126 @@ class Backgammon:
 
     def print_board(self):
         self.print_temp_board(self.state)
+
+    def new_game(self):
+        """
+        Resets game to original layout.
+        """
+        for col in self.layout.split(','):
+            loc, num, token = col.split('-')
+            self.grid[int(loc)] = [token for _ in range(int(num))]
+        for col in self.grid:
+            for piece in col:
+                self.numPieces[piece] += 1
+
+    def draw(self, roll=None):
+        if roll is None:
+            roll = self.roll
+        else:
+            self.roll = roll
+
+        self.drawGui(roll)
+
+    def initGui(self):
+        pygame.init()
+        WIDTH = 800
+        HEIGHT = 425
+
+        WOFFSET_TOP = 57
+        HOFFSET_TOP = 12
+        HOFFSET_BOT = 370
+        WSKIP = 55
+        WMID = 32
+
+        HSKIP = 30
+        size = WIDTH, HEIGHT
+
+        self.gridLocs = []
+
+        for i in range(24):
+            mid = 0
+            hoff = HOFFSET_TOP
+            hskip = HSKIP
+            k = 11 - i
+            if i < 6 or i > 17:
+                mid = WMID
+            if i > 11:
+                hoff = HOFFSET_BOT
+                hskip = -hskip
+                k = i - 12
+            self.gridLocs.append([(WOFFSET_TOP + k * WSKIP + mid, hoff + j * hskip) for j in range(6)])
+        self.barLocs = {'x': [(376, 142), (376, 110)], 'o': [(376, 243), (376, 275)]}
+        self.board_img = pygame.transform.scale(pygame.image.load('images/board.png'), size)
+        self.screen = pygame.display.set_mode(self.board_img.get_rect().size)
+        self.tokIms = {'x': pygame.image.load('images/blackPiece.png'), \
+                       'o': pygame.image.load('images/whitePiece.png')}
+        self.dies = [pygame.transform.scale(pygame.image.load('images/die%d.png' % i), (35, 35)) \
+                     for i in range(1, 7)]
+        self.offIms = {'x': pygame.transform.scale(pygame.image.load('images/blackOff.png'), (40, 18)), \
+                       'o': pygame.transform.scale(pygame.image.load('images/whiteOff.png'), (40, 18))}
+
+        outOff = 748
+        bOffH = 391
+        wOffH = 11
+        offSkip = 9
+        self.offLocs = {'x': [(outOff, bOffH - i * offSkip) for i in range(19)], \
+                        'o': [(outOff, wOffH + i * offSkip) for i in range(19)]}
+
+    def drawGui(self, roll):
+        if self.init:
+            self.initGui()
+        self.screen.blit(self.board_img, self.board_img.get_rect())
+        self.screen.blit(self.dies[roll[0] - 1], (180, 190))
+        self.screen.blit(self.dies[roll[1] - 1], (220, 190))
+        for i, col in enumerate(self.grid):
+            for j, t in enumerate(col):
+                # for now only draw first 6 pieces
+                if j > 5:
+                    break
+                self.screen.blit(self.tokIms[t], self.gridLocs[23 - i][j])
+        for k, v in self.barPieces.items():
+            for i, t in enumerate(v):
+                if i > 1:
+                    break
+                self.screen.blit(self.tokIms[t], self.barLocs[t][i])
+
+        for k, v in self.offPieces.items():
+            for i, t in enumerate(v):
+                self.screen.blit(self.offIms[t], self.offLocs[t][i])
+        pygame.display.flip()
+
+    def gridLocFromPos(self, pos, player):
+        tx, ty = self.tokIms['x'].get_rect().size
+
+        def onPiece(pieceLoc, pos, sizex, sizey):
+            px, py = pieceLoc
+            tx, ty = pos
+            if tx < px + sizex and tx > px:
+                if ty < py + sizey and ty > py:
+                    return True
+            return False
+
+        # find out if we are on the grid
+        for i, col in enumerate(self.grid):
+            for loc in self.gridLocs[23 - i]:
+                if onPiece(loc, pos, tx, ty):
+                    return i
+
+        # find out if we are on the bar
+        for i, bp in enumerate(self.barPieces[player]):
+            if onPiece(self.barLocs[player][i], pos, tx, ty):
+                return ON
+
+        # find out if we are removing pieces
+        offBase = self.offLocs['o'][0] if player == 'o' else self.offLocs['x'][-1]
+        offHeight = 200
+        offWidth, _ = self.offIms['x'].get_rect().size
+        if onPiece(offBase, pos, offWidth, offHeight):
+            return OFF
+
+        return None
+
+
 
 
 if __name__ == '__main__':
