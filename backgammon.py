@@ -3,10 +3,6 @@ import copy
 import pygame
 
 
-LAYOUT = "0-2-o,5-5-x,7-3-x,11-5-o,12-5-x,16-3-o,18-5-o,23-2-x"
-
-NUMCOLS = 24
-QUAD = 6
 OFF = 'off'
 ON = 'on'
 
@@ -39,10 +35,9 @@ class Backgammon:
         self.calc_pips()
         self.next_states = []
 
-        self.die = QUAD
-        self.layout = "0-2-o,5-5-x,7-3-x,11-5-o,12-5-x,16-3-o,18-5-o,23-2-x"
-        self.players = ['o', 'x']
-        self.grid = [[] for _ in range(NUMCOLS)]
+        self.die = 6
+        self.players = ['white', 'black']
+        self.grid = [[] for _ in range(24)]
         self.offPieces = {}
         self.barPieces = {}
         self.numPieces = {}
@@ -142,10 +137,6 @@ class Backgammon:
                                     print 'this is a duplicate state, ignoring'
         print 'final_states = ', final_states
 
-
-
-
-
     def all_counters_in_last_quarter(self, counter_list, side):
         if side == 'white':
             for i in range(19):
@@ -179,13 +170,19 @@ class Backgammon:
     def print_board(self):
         self.print_temp_board(self.state)
 
+    ### code taken from someone elses github, work out what it does
+
     def new_game(self):
         """
         Resets game to original layout.
         """
-        for col in self.layout.split(','):
-            loc, num, token = col.split('-')
-            self.grid[int(loc)] = [token for _ in range(int(num))]
+        for colour in ['white', 'black']:
+            for posn, counters in enumerate(self.state[colour]):
+                if posn in [0, 25] or counters == 0:
+                    continue
+                print 'posn, counters = ', posn, counters
+                self.grid[posn - 1] = [colour for _ in range(int(counters))]
+
         for col in self.grid:
             for piece in col:
                 self.numPieces[piece] += 1
@@ -200,8 +197,8 @@ class Backgammon:
 
     def initGui(self):
         pygame.init()
-        WIDTH = 800
-        HEIGHT = 425
+        WIDTH, HEIGHT = 800, 425
+        size = WIDTH, HEIGHT
 
         WOFFSET_TOP = 57
         HOFFSET_TOP = 12
@@ -210,7 +207,7 @@ class Backgammon:
         WMID = 32
 
         HSKIP = 30
-        size = WIDTH, HEIGHT
+
 
         self.gridLocs = []
 
@@ -229,19 +226,16 @@ class Backgammon:
         self.barLocs = {'x': [(376, 142), (376, 110)], 'o': [(376, 243), (376, 275)]}
         self.board_img = pygame.transform.scale(pygame.image.load('images/board.png'), size)
         self.screen = pygame.display.set_mode(self.board_img.get_rect().size)
-        self.tokIms = {'x': pygame.image.load('images/blackPiece.png'), \
-                       'o': pygame.image.load('images/whitePiece.png')}
+        self.tokIms = {'black': pygame.image.load('images/blackPiece.png'), \
+                       'white': pygame.image.load('images/whitePiece.png')}
         self.dies = [pygame.transform.scale(pygame.image.load('images/die%d.png' % i), (35, 35)) \
                      for i in range(1, 7)]
-        self.offIms = {'x': pygame.transform.scale(pygame.image.load('images/blackOff.png'), (40, 18)), \
-                       'o': pygame.transform.scale(pygame.image.load('images/whiteOff.png'), (40, 18))}
+        self.offIms = {'black': pygame.transform.scale(pygame.image.load('images/blackOff.png'), (40, 18)), \
+                       'white': pygame.transform.scale(pygame.image.load('images/whiteOff.png'), (40, 18))}
 
-        outOff = 748
-        bOffH = 391
-        wOffH = 11
-        offSkip = 9
-        self.offLocs = {'x': [(outOff, bOffH - i * offSkip) for i in range(19)], \
-                        'o': [(outOff, wOffH + i * offSkip) for i in range(19)]}
+        outOff, bOffH, wOffH, offSkip = 748, 391, 11, 9
+        self.offLocs = {'black': [(outOff, bOffH - i * offSkip) for i in range(19)], \
+                        'white': [(outOff, wOffH + i * offSkip) for i in range(19)]}
 
     def drawGui(self, roll):
         if self.init:
@@ -272,8 +266,8 @@ class Backgammon:
         def onPiece(pieceLoc, pos, sizex, sizey):
             px, py = pieceLoc
             tx, ty = pos
-            if tx < px + sizex and tx > px:
-                if ty < py + sizey and ty > py:
+            if px < tx < px + sizex:
+                if py < ty < py + sizey:
                     return True
             return False
 
@@ -289,9 +283,9 @@ class Backgammon:
                 return ON
 
         # find out if we are removing pieces
-        offBase = self.offLocs['o'][0] if player == 'o' else self.offLocs['x'][-1]
+        offBase = self.offLocs['white'][0] if player == 'white' else self.offLocs['black'][-1]
         offHeight = 200
-        offWidth, _ = self.offIms['x'].get_rect().size
+        offWidth, _ = self.offIms['black'].get_rect().size
         if onPiece(offBase, pos, offWidth, offHeight):
             return OFF
 
