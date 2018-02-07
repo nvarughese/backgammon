@@ -1,6 +1,7 @@
 import random
 import copy
 import pygame
+import time
 
 
 OFF = 'off'
@@ -9,8 +10,11 @@ ON = 'on'
 
 def run():
     bg = Backgammon()
-    bg.new_game()
     bg.draw((4, 3))
+    bg.state['white'] = [3, 0, 0, 0, 0, 4, 7, 0, 0, 0, 0, 0, 0,
+                           0, 0, 0, 0, 3, 0, 5, 0, 0, 0, 0, 0, 6]
+    time.sleep(3)
+    bg.draw((1, 5))
     '''
     bg.print_board()
     bg.roll_dice()
@@ -26,25 +30,16 @@ class Backgammon:
         # old english rules mean you are limited to 5 counters on a single point
         self.use_old_english_rules = False
         self.state = {}
-        self.state['white'] = [0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, \
-                                           0, 0, 0, 0, 3, 0, 5, 0, 0, 0, 0, 0, 0]
-        self.state['black'] = [0, 0, 0, 0, 0, 0, 5, 0, 3, 0, 0, 0, 0, \
-                                           5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0]
+        self.state['white'] = [3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+                                  0, 0, 0, 0, 3, 0, 5, 0, 0, 0, 0, 0, 6]
+        self.state['black'] = [8, 0, 0, 0, 0, 0, 5, 0, 3, 0, 0, 0, 0,
+                                  5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2]
         self.last_dice = []
         self.white_pips, self.black_pips = 0, 0
         self.calc_pips()
         self.next_states = []
 
-        self.die = 6
-        self.players = ['white', 'black']
-        self.grid = [[] for _ in range(24)]
-        self.offPieces = {}
-        self.barPieces = {}
-        self.numPieces = {}
-        for t in self.players:
-            self.barPieces[t] = []
-            self.offPieces[t] = []
-            self.numPieces[t] = 0
+
         self.init = True
         self.roll = None
 
@@ -172,20 +167,7 @@ class Backgammon:
 
     ### code taken from someone elses github, work out what it does
 
-    def new_game(self):
-        """
-        Resets game to original layout.
-        """
-        for colour in ['white', 'black']:
-            for posn, counters in enumerate(self.state[colour]):
-                if posn in [0, 25] or counters == 0:
-                    continue
-                print 'posn, counters = ', posn, counters
-                self.grid[posn - 1] = [colour for _ in range(int(counters))]
 
-        for col in self.grid:
-            for piece in col:
-                self.numPieces[piece] += 1
 
     def draw(self, roll=None):
         if roll is None:
@@ -200,17 +182,10 @@ class Backgammon:
         WIDTH, HEIGHT = 800, 425
         size = WIDTH, HEIGHT
 
-        WOFFSET_TOP = 57
-        HOFFSET_TOP = 12
-        HOFFSET_BOT = 370
-        WSKIP = 55
-        WMID = 32
+        WOFFSET_TOP, HOFFSET_TOP, HOFFSET_BOT = 57, 12, 370
+        WSKIP, WMID, HSKIP, BAR_SKIP, WBAR = 55, 32, 30, 32, 376
 
-        HSKIP = 30
-
-
-        self.gridLocs = []
-
+        self.grid_locs = []
         for i in range(24):
             mid = 0
             hoff = HOFFSET_TOP
@@ -222,20 +197,23 @@ class Backgammon:
                 hoff = HOFFSET_BOT
                 hskip = -hskip
                 k = i - 12
-            self.gridLocs.append([(WOFFSET_TOP + k * WSKIP + mid, hoff + j * hskip) for j in range(6)])
-        self.barLocs = {'x': [(376, 142), (376, 110)], 'o': [(376, 243), (376, 275)]}
+            self.grid_locs.append([(WOFFSET_TOP + k * WSKIP + mid, hoff + j * hskip) for j in range(6)])
+        # self.bar_locs = {'black': [(376, 142), (376, 110)], 'white': [(376, 243), (376, 275)]}
+        self.bar_locs = {'black': [(WBAR, 142 - i * BAR_SKIP) for i in range(6)],
+                         'white': [(WBAR, 243 + i * BAR_SKIP) for i in range(6)]}
         self.board_img = pygame.transform.scale(pygame.image.load('images/board.png'), size)
         self.screen = pygame.display.set_mode(self.board_img.get_rect().size)
-        self.tokIms = {'black': pygame.image.load('images/blackPiece.png'), \
+        self.token_images = {'black': pygame.image.load('images/blackPiece.png'), \
                        'white': pygame.image.load('images/whitePiece.png')}
         self.dies = [pygame.transform.scale(pygame.image.load('images/die%d.png' % i), (35, 35)) \
                      for i in range(1, 7)]
-        self.offIms = {'black': pygame.transform.scale(pygame.image.load('images/blackOff.png'), (40, 18)), \
-                       'white': pygame.transform.scale(pygame.image.load('images/whiteOff.png'), (40, 18))}
+        self.off_images = {'black': pygame.transform.scale(pygame.image.load('images/blackOff.png'), (40, 18)), \
+                           'white': pygame.transform.scale(pygame.image.load('images/whiteOff.png'), (40, 18))}
 
         outOff, bOffH, wOffH, offSkip = 748, 391, 11, 9
-        self.offLocs = {'black': [(outOff, bOffH - i * offSkip) for i in range(19)], \
-                        'white': [(outOff, wOffH + i * offSkip) for i in range(19)]}
+        self.off_locs = {'black': [(outOff, bOffH - i * offSkip) for i in range(19)],
+                         'white': [(outOff, wOffH + i * offSkip) for i in range(19)]}
+
 
     def drawGui(self, roll):
         if self.init:
@@ -243,27 +221,32 @@ class Backgammon:
         self.screen.blit(self.board_img, self.board_img.get_rect())
         self.screen.blit(self.dies[roll[0] - 1], (180, 190))
         self.screen.blit(self.dies[roll[1] - 1], (220, 190))
-        for i, col in enumerate(self.grid):
-            for j, t in enumerate(col):
-                # for now only draw first 6 pieces
-                if j > 5:
-                    break
-                self.screen.blit(self.tokIms[t], self.gridLocs[23 - i][j])
-        for k, v in self.barPieces.items():
-            for i, t in enumerate(v):
-                if i > 1:
-                    break
-                self.screen.blit(self.tokIms[t], self.barLocs[t][i])
+        for colour in ['white', 'black']:
+            for posn, counters in enumerate(self.state[colour]):
+                if counters == 0 or posn in [0, 25]:
+                    continue
+                for i in range(min(counters, 6)):
+                    self.screen.blit(self.token_images[colour], self.grid_locs[24 - posn][i])
 
-        for k, v in self.offPieces.items():
-            for i, t in enumerate(v):
-                self.screen.blit(self.offIms[t], self.offLocs[t][i])
+        if self.state['white'][0] > 0:
+            for i in range(self.state['white'][0]):
+                self.screen.blit(self.token_images['white'], self.bar_locs['white'][i])
+        if self.state['black'][25] > 0:
+            for i in range(self.state['black'][25]):
+                self.screen.blit(self.token_images['black'], self.bar_locs['black'][i])
+        if self.state['white'][25] > 0:
+            for i in range(self.state['white'][25]):
+                self.screen.blit(self.off_images['white'], self.off_locs['white'][i])
+        if self.state['black'][0] > 0:
+            for i in range(self.state['black'][0]):
+                self.screen.blit(self.off_images['black'], self.off_locs['black'][i])
+
         pygame.display.flip()
 
     def gridLocFromPos(self, pos, player):
-        tx, ty = self.tokIms['x'].get_rect().size
+        tx, ty = self.token_images['black'].get_rect().size
 
-        def onPiece(pieceLoc, pos, sizex, sizey):
+        def on_piece(pieceLoc, pos, sizex, sizey):
             px, py = pieceLoc
             tx, ty = pos
             if px < tx < px + sizex:
@@ -273,20 +256,20 @@ class Backgammon:
 
         # find out if we are on the grid
         for i, col in enumerate(self.grid):
-            for loc in self.gridLocs[23 - i]:
-                if onPiece(loc, pos, tx, ty):
+            for loc in self.grid_locs[23 - i]:
+                if on_piece(loc, pos, tx, ty):
                     return i
 
         # find out if we are on the bar
-        for i, bp in enumerate(self.barPieces[player]):
-            if onPiece(self.barLocs[player][i], pos, tx, ty):
+        for i, bp in enumerate(self.bar_pieces[player]):
+            if on_piece(self.bar_locs[player][i], pos, tx, ty):
                 return ON
 
         # find out if we are removing pieces
-        offBase = self.offLocs['white'][0] if player == 'white' else self.offLocs['black'][-1]
-        offHeight = 200
-        offWidth, _ = self.offIms['black'].get_rect().size
-        if onPiece(offBase, pos, offWidth, offHeight):
+        off_base = self.off_locs['white'][0] if player == 'white' else self.off_locs['black'][-1]
+        off_height = 200
+        off_width, _ = self.off_images['black'].get_rect().size
+        if on_piece(off_base, pos, off_width, off_height):
             return OFF
 
         return None
