@@ -9,12 +9,19 @@ ON = 'on'
 
 
 def run():
+    delay_time = 0
     bg = Backgammon()
-    bg.draw((4, 3))
-    bg.state['white'] = [3, 0, 0, 0, 0, 4, 7, 0, 0, 0, 0, 0, 0,
-                           0, 0, 0, 0, 3, 0, 5, 0, 0, 0, 0, 0, 6]
-    time.sleep(3)
-    bg.draw((1, 5))
+    for turn in range(5):
+        for colour in ['white', 'black']:
+            bg.roll_dice()
+            time.sleep(delay_time)
+            bg.draw_gui()
+            bg.calc_legal_next_states(colour)
+            bg.pick_random_next_state()
+            time.sleep(delay_time)
+            bg.draw_gui()
+
+
     '''
     bg.print_board()
     bg.roll_dice()
@@ -30,11 +37,11 @@ class Backgammon:
         # old english rules mean you are limited to 5 counters on a single point
         self.use_old_english_rules = False
         self.state = {}
-        self.state['white'] = [3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
-                                  0, 0, 0, 0, 3, 0, 5, 0, 0, 0, 0, 0, 6]
-        self.state['black'] = [8, 0, 0, 0, 0, 0, 5, 0, 3, 0, 0, 0, 0,
-                                  5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2]
-        self.last_dice = []
+        self.state['white'] = [0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+                                  0, 0, 0, 0, 3, 0, 5, 0, 0, 0, 0, 0, 0]
+        self.state['black'] = [0, 0, 0, 0, 0, 0, 5, 0, 3, 0, 0, 0, 0,
+                                  5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0]
+        self.dice = []
         self.white_pips, self.black_pips = 0, 0
         self.calc_pips()
         self.next_states = []
@@ -43,15 +50,14 @@ class Backgammon:
         self.init = True
         self.roll = None
 
-
     def roll_dice(self):
         d1 = random.randint(1, 6)
         d2 = random.randint(1, 6)
         if d1 != d2:
-            self.last_dice = [d1, d2]
+            self.dice = [d1, d2]
         else:
-            self.last_dice = [d1, d2] #, d1, d2] # for the moment do not count doubles
-        print 'dice rolled as ', d1, d2
+            self.dice = [d1, d2] #, d1, d2] # for the moment do not count doubles
+
 
     def get_valid_and_state(self, state, colour, counter_posn, dice_roll, in_last_quarter):
         opp_colour = {'white': 'black', 'black': 'white'}[colour]
@@ -92,10 +98,10 @@ class Backgammon:
     def calc_legal_next_states(self, colour):
         lowest_pips = {'white': self.white_pips, 'black': self.black_pips}[colour]
         final_states = []
-        if len(self.last_dice) == 2:
+        if len(self.dice) == 2:
             in_last_quarter_start = self.all_counters_in_last_quarter(self.state[colour][:], colour)
             for move_order in [[0, 1], [1, 0]]:
-                first_dice, second_dice = self.last_dice[move_order[0]], self.last_dice[move_order[1]]
+                first_dice, second_dice = self.dice[move_order[0]], self.dice[move_order[1]]
                 for first_counter_posn in range(25):  # this means move counter in position first_counter_posn
                     valid_move, new_state = self.get_valid_and_state(self.state, colour, first_counter_posn, first_dice,
                                                                      in_last_quarter_start)
@@ -109,16 +115,16 @@ class Backgammon:
                             continue
                         white_pips, black_pips = self.return_pips(final_state)
                         final_pips = {'white': white_pips, 'black': black_pips}[colour]
-                        print '\n\nfinal state option after ', colour, ' move, display below, pips = ', final_pips
-                        print 'move posn ', first_counter_posn, ' counter ', first_dice, ' places, move posn ', \
-                            second_counter_posn, ' counter ', second_dice, ' places'
-                        self.print_temp_board(final_state)
-                        print 'final_pips, lowest_pips = ', final_pips, lowest_pips
+                        # print '\n\nfinal state option after ', colour, ' move, display below, pips = ', final_pips
+                        # print 'move posn ', first_counter_posn, ' counter ', first_dice, ' places, move posn ', \
+                        #     second_counter_posn, ' counter ', second_dice, ' places'
+                        # self.print_temp_board(final_state)
+                        # print 'final_pips, lowest_pips = ', final_pips, lowest_pips
                         if final_pips <= lowest_pips:
                             if final_pips < lowest_pips:
                                 final_states = [final_state]
                                 lowest_pips = final_pips
-                                print 'new low in pips, starting final states from scratch'
+                                # print 'new low in pips, starting final states from scratch'
                             else:
                                 # in this part compare the final state to previous states to check for duplicates
                                 is_duplicate_state = False
@@ -126,11 +132,25 @@ class Backgammon:
                                     if final_state == state:
                                         is_duplicate_state = True
                                 if not is_duplicate_state:
-                                    print 'not a duplicate state adding to final_states'
+                                    # print 'not a duplicate state adding to final_states'
                                     final_states.append(final_state)
                                 else:
-                                    print 'this is a duplicate state, ignoring'
-        print 'final_states = ', final_states
+                                    pass
+                                    # print 'this is a duplicate state, ignoring'
+        self.next_states = []
+        for state in final_states:
+            self.next_states.append({'white': copy.copy(state['white']), 'black': copy.copy(state['black'])})
+        # print 'final_states = ', final_states
+
+    def pick_random_next_state(self):
+        if len(self.next_states) == 0:
+            print 'no possible moves, leave state the same'
+            return
+        elif len(self.next_states) == 1:
+            i = 0
+        else:
+            i = random.randint(0, len(self.next_states) - 1)
+        self.state = {'white': copy.copy(self.next_states[i]['white']), 'black': copy.copy(self.next_states[i]['black'])}
 
     def all_counters_in_last_quarter(self, counter_list, side):
         if side == 'white':
@@ -156,6 +176,7 @@ class Backgammon:
         self.white_pips, self.black_pips = self.return_pips(self.state)
 
     def print_temp_board(self, state):
+        print '\n'
         print 'top    white : ->', state['white'][13:19], state['white'][19:25], '->', state['white'][25]
         print 'top    black : <-', state['black'][13:19], state['black'][19:25], '<-', state['black'][25]
         print ''
@@ -167,17 +188,7 @@ class Backgammon:
 
     ### code taken from someone elses github, work out what it does
 
-
-
-    def draw(self, roll=None):
-        if roll is None:
-            roll = self.roll
-        else:
-            self.roll = roll
-
-        self.drawGui(roll)
-
-    def initGui(self):
+    def init_gui(self):
         pygame.init()
         WIDTH, HEIGHT = 800, 425
         size = WIDTH, HEIGHT
@@ -215,12 +226,15 @@ class Backgammon:
                          'white': [(outOff, wOffH + i * offSkip) for i in range(19)]}
 
 
-    def drawGui(self, roll):
+    def draw_gui(self):
+        self.print_board()
+        self.calc_pips()
+        print 'white, black pips = ', self.white_pips, self.black_pips
         if self.init:
-            self.initGui()
+            self.init_gui()
         self.screen.blit(self.board_img, self.board_img.get_rect())
-        self.screen.blit(self.dies[roll[0] - 1], (180, 190))
-        self.screen.blit(self.dies[roll[1] - 1], (220, 190))
+        self.screen.blit(self.dies[self.dice[0] - 1], (180, 190))
+        self.screen.blit(self.dies[self.dice[1] - 1], (220, 190))
         for colour in ['white', 'black']:
             for posn, counters in enumerate(self.state[colour]):
                 if counters == 0 or posn in [0, 25]:
