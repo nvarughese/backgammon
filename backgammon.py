@@ -279,3 +279,11 @@ class Backgammon:
 
 if __name__ == '__main__':
     run()
+
+
+## todo
+# 1 connect up human player
+# 2 connect up computer player
+# 3 work out end of game
+# 4 make 1 ply cpu
+# 5 make 2 ply cpu
