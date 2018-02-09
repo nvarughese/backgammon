@@ -11,25 +11,21 @@ ON = 'on'
 def run():
     delay_time = 0
     bg = Backgammon()
-    for turn in range(5):
-        for colour in ['white', 'black']:
-            bg.roll_dice()
-            time.sleep(delay_time)
-            bg.draw_gui()
-            bg.calc_legal_next_states(colour)
-            bg.pick_random_next_state()
-            time.sleep(delay_time)
-            bg.draw_gui()
+    for turn, colour in [(turn, colour) for turn in range(2000) for colour in ['white', 'black']]:
+        bg.roll_dice()
+        # time.sleep(delay_time)
+        # bg.draw_gui()
+        bg.calc_legal_next_states(colour)
+        bg.pick_random_next_state()
+        # time.sleep(delay_time)
+        # bg.draw_gui()
+        if bg.white_pips == 0:
+            print 'game won by white in turn ', turn
+            break
+        elif bg.black_pips == 0:
+            print 'game won by black in turn ', turn
+            break
 
-
-    '''
-    bg.print_board()
-    bg.roll_dice()
-    bg.calc_legal_next_states('white')
-    bg.calc_legal_next_states('black')
-    print 'bg.white_pips, bg.black_pips = ', bg.white_pips, bg.black_pips
-    '''
-    raw_input("Press Enter to continue...")
 
 class Backgammon:
     def __init__(self):
@@ -45,7 +41,7 @@ class Backgammon:
         self.white_pips, self.black_pips = 0, 0
         self.calc_pips()
         self.next_states = []
-
+        self.lowest_pips = 167
 
         self.init = True
         self.roll = None
@@ -76,10 +72,14 @@ class Backgammon:
             return False, state  # if there is a counter off the board you need to move it first
 
         new_counter_posn = counter_posn + (direction * dice_roll)
+        if new_counter_posn < 1:  # make sure the counters jump into the home
+            new_counter_posn = 0
+        if new_counter_posn > 24:
+            new_counter_posn = 25
         if 1 <= new_counter_posn <= 24 and state[opp_colour][new_counter_posn] > 1:
             return False, state  # cannot move to a point with 2 or more opposing counters
 
-        if not in_last_quarter and (counter_posn + (direction * dice_roll) > 24 or counter_posn + (direction * dice_roll) < 1):
+        if not in_last_quarter and (new_counter_posn > 24 or new_counter_posn < 1):
             return False, state  # cannot move a counter off the board unless all your counters in the last quarter
 
         # in theory a legal move so create a new state to update
@@ -88,7 +88,7 @@ class Backgammon:
         if state[opp_colour][new_counter_posn] == 1:
             new_state[opp_colour][new_counter_posn] = 0
             new_state[opp_colour][opp_start_posn] += 1  # if opponents pieces jumped on send to start
-        if new_counter_posn < 1 or new_counter_posn > 24:
+        if new_counter_posn < 1 or new_counter_posn > 24:  # if opponent reaches the end put into 0 or 25 index
             new_state[colour][end_posn] += 1
         else:
             new_state[colour][new_counter_posn] += 1
@@ -96,51 +96,44 @@ class Backgammon:
         return True, new_state
 
     def calc_legal_next_states(self, colour):
-        lowest_pips = {'white': self.white_pips, 'black': self.black_pips}[colour]
-        final_states = []
+        self.lowest_pips = {'white': self.white_pips, 'black': self.black_pips}[colour]
         if len(self.dice) == 2:
             in_last_quarter_start = self.all_counters_in_last_quarter(self.state[colour][:], colour)
             for move_order in [[0, 1], [1, 0]]:
                 first_dice, second_dice = self.dice[move_order[0]], self.dice[move_order[1]]
-                for first_counter_posn in range(25):  # this means move counter in position first_counter_posn
+                for first_counter_posn in range(26):  # this means move counter in position first_counter_posn
                     valid_move, new_state = self.get_valid_and_state(self.state, colour, first_counter_posn, first_dice,
                                                                      in_last_quarter_start)
                     if not valid_move:
                         continue
+                    # this has to be done after first roll as some best moves only involve rolling 1 dice
+                    self.update_next_states(new_state, colour)
                     in_last_quarter_next = self.all_counters_in_last_quarter(new_state[colour][:], colour)
                     for second_counter_posn in range(26):
                         valid_move, final_state = self.get_valid_and_state(new_state, colour, second_counter_posn,
                                                                            second_dice, in_last_quarter_next)
                         if not valid_move:
                             continue
-                        white_pips, black_pips = self.return_pips(final_state)
-                        final_pips = {'white': white_pips, 'black': black_pips}[colour]
-                        # print '\n\nfinal state option after ', colour, ' move, display below, pips = ', final_pips
-                        # print 'move posn ', first_counter_posn, ' counter ', first_dice, ' places, move posn ', \
-                        #     second_counter_posn, ' counter ', second_dice, ' places'
-                        # self.print_temp_board(final_state)
-                        # print 'final_pips, lowest_pips = ', final_pips, lowest_pips
-                        if final_pips <= lowest_pips:
-                            if final_pips < lowest_pips:
-                                final_states = [final_state]
-                                lowest_pips = final_pips
-                                # print 'new low in pips, starting final states from scratch'
-                            else:
-                                # in this part compare the final state to previous states to check for duplicates
-                                is_duplicate_state = False
-                                for state in final_states:
-                                    if final_state == state:
-                                        is_duplicate_state = True
-                                if not is_duplicate_state:
-                                    # print 'not a duplicate state adding to final_states'
-                                    final_states.append(final_state)
-                                else:
-                                    pass
-                                    # print 'this is a duplicate state, ignoring'
-        self.next_states = []
-        for state in final_states:
-            self.next_states.append({'white': copy.copy(state['white']), 'black': copy.copy(state['black'])})
-        # print 'final_states = ', final_states
+                        self.update_next_states(final_state, colour)
+
+
+    def update_next_states(self, final_state, colour):
+        white_pips, black_pips = self.return_pips(final_state)
+        final_pips = {'white': white_pips, 'black': black_pips}[colour]
+
+        if final_pips <= self.lowest_pips:
+            if final_pips < self.lowest_pips:
+                self.next_states = [final_state]
+                self.lowest_pips = final_pips
+            else:
+                # in this part compare the final state to previous states to check for duplicates
+                is_duplicate_state = False
+                for state in self.next_states:
+                    if final_state == state:
+                        is_duplicate_state = True
+                if not is_duplicate_state:
+                    self.next_states.append(final_state)
+
 
     def pick_random_next_state(self):
         if len(self.next_states) == 0:
@@ -151,6 +144,7 @@ class Backgammon:
         else:
             i = random.randint(0, len(self.next_states) - 1)
         self.state = {'white': copy.copy(self.next_states[i]['white']), 'black': copy.copy(self.next_states[i]['black'])}
+        self.calc_pips()
 
     def all_counters_in_last_quarter(self, counter_list, side):
         if side == 'white':
@@ -177,11 +171,14 @@ class Backgammon:
 
     def print_temp_board(self, state):
         print '\n'
+        print 'dice = ', self.dice[0], self.dice[1]
         print 'top    white : ->', state['white'][13:19], state['white'][19:25], '->', state['white'][25]
         print 'top    black : <-', state['black'][13:19], state['black'][19:25], '<-', state['black'][25]
         print ''
         print 'bottom white : <-', state['white'][7:13][::-1], state['white'][1:7][::-1], '<-', state['white'][0]
         print 'bottom black : ->', state['black'][7:13][::-1], state['black'][1:7][::-1], '->', state['black'][0]
+        self.calc_pips()
+        print 'white, black pips = ', self.white_pips, self.black_pips
 
     def print_board(self):
         self.print_temp_board(self.state)
@@ -228,8 +225,6 @@ class Backgammon:
 
     def draw_gui(self):
         self.print_board()
-        self.calc_pips()
-        print 'white, black pips = ', self.white_pips, self.black_pips
         if self.init:
             self.init_gui()
         self.screen.blit(self.board_img, self.board_img.get_rect())
@@ -292,7 +287,9 @@ class Backgammon:
 
 
 if __name__ == '__main__':
-    run()
+    for i in range(100):
+        run()
+    raw_input("Press Enter to continue...")
 
 
 ## todo
