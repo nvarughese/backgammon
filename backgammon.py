@@ -3,6 +3,8 @@ import copy
 import pygame
 import time
 
+from multiprocessing import pool
+
 
 class Backgammon:
     def __init__(self):
@@ -21,26 +23,30 @@ class Backgammon:
         self.players = {'white': 'cpu', 'black': 'cpu'}
         self.move_colour = 'white'
         self.delay_time = 0
+        self.next_next_states = []
+        self.all_dice_rolls = [[i, j] for i in range(1, 7) for j in range(1, 7) if i < j] + [[i, i] for i in range(1, 7)]
 
     def play_game(self):
         for turn, colour in [(turn, colour) for turn in range(2000) for colour in ['white', 'black']]:
             self.move_colour = colour
             self.roll_dice()
             time.sleep(self.delay_time)
-            self.draw_gui()
+            #self.draw_gui()
             self.calc_legal_next_states()
+            self.calc_next_next_states()
             if self.players[colour] == 'human':
                 self.input_human_move()
             else:
                 self.pick_random_next_state()
             time.sleep(self.delay_time)
-            self.draw_gui()
+            #self.draw_gui()
             if self.white_pips == 0:
                 print 'game won by white in turn ', turn
                 break
             elif self.black_pips == 0:
                 print 'game won by black in turn ', turn
                 break
+        return "Done"
 
     def input_human_move(self):
 
@@ -138,50 +144,86 @@ class Backgammon:
         new_state[self.move_colour][counter_posn] -= 1
         return True, new_state
 
-    def calc_legal_next_states(self):
-        self.next_states = []
-        self.lowest_pips = {'white': self.white_pips, 'black': self.black_pips}[self.move_colour]
+
+    def calc_legal_next_states_generic(self, move_colour, state, dice):
+        next_states = []
+        white_pips, black_pips = self.return_pips(state)
+        lowest_pips = {'white': white_pips, 'black': black_pips}[move_colour]
         if len(self.dice) == 2:
-            in_last_quarter_start = self.all_counters_in_last_quarter(self.state[self.move_colour][:])
+            in_last_quarter_start = self.all_counters_in_last_quarter(state[move_colour][:])
             for move_order in [[0, 1], [1, 0]]:
-                first_dice, second_dice = self.dice[move_order[0]], self.dice[move_order[1]]
+                first_dice, second_dice = dice[move_order[0]], dice[move_order[1]]
                 for first_counter_posn in range(26):  # this means move counter in position first_counter_posn
-                    valid_move, new_state = self.get_valid_and_state(self.state, first_counter_posn,
+                    valid_move, new_state = self.get_valid_and_state(state, first_counter_posn,
                                                                      first_dice, in_last_quarter_start)
                     if not valid_move:
                         continue
                     # this has to be done after first roll as some best moves only involve rolling 1 dice
-                    self.update_next_states(new_state, self.move_colour)
-                    in_last_quarter_next = self.all_counters_in_last_quarter(new_state[self.move_colour][:])
+                    next_states = self.update_next_states_generic(move_colour, new_state, next_states, lowest_pips)
+                    in_last_quarter_next = self.all_counters_in_last_quarter(new_state[move_colour][:])
                     for second_counter_posn in range(26):
                         valid_move, final_state = self.get_valid_and_state(new_state, second_counter_posn, second_dice,
                                                                            in_last_quarter_next)
                         if not valid_move:
                             continue
-                        self.update_next_states(final_state, self.move_colour)
+                        next_states = self.update_next_states_generic(move_colour, new_state, next_states, lowest_pips)
 
+        return next_states
 
-    def update_next_states(self, final_state, colour):
-        white_pips, black_pips = self.return_pips(final_state)
-        final_pips = {'white': white_pips, 'black': black_pips}[colour]
+    def calc_legal_next_states(self):
+        self.next_states = self.calc_legal_next_states_generic(self.move_colour, self.state, self.dice)
 
-        if final_pips <= self.lowest_pips:
-            if final_pips < self.lowest_pips:
-                self.next_states = [final_state]
-                self.lowest_pips = final_pips
+    def update_next_states_generic(self, move_colour, new_state, next_states, lowest_pips):
+        white_pips, black_pips = self.return_pips(new_state)
+        new_pips = {'white': white_pips, 'black': black_pips}[move_colour]
+
+        if new_pips <= lowest_pips:
+            if new_pips < lowest_pips:
+                next_states = [new_state]
+                lowest_pips = new_pips
             else:
                 # in this part compare the final state to previous states to check for duplicates
                 is_duplicate_state = False
-                for state in self.next_states:
-                    if final_state == state:
+                for state in next_states:
+                    if new_state == state:
                         is_duplicate_state = True
                 if not is_duplicate_state:
-                    self.next_states.append(final_state)
+                    next_states.append(new_state)
+        return next_states, lowest_pips
 
+    def update_next_states(self, final_state, colour):
+        self.next_states, self.lowest_pips = self.update_next_states_generic(self.move_colour, final_state,
+                                                                             self.next_states, self.lowest_pips)
+
+    def calc_next_next_states(self):
+        opp_move_colour = {'white': 'black', 'black': 'white'}[self.move_colour]
+        self.next_next_states = {}
+        print 'self.dice = ', self.dice
+        for i, state in enumerate(self.next_states):
+            self.next_next_states[i] = {}
+            for dice_roll in self.all_dice_rolls:
+                print 'state = ', state
+                white_pips, black_pips = self.return_pips(state)
+                # if its whites move then black wants to have lowest pips vs white so maximise white_pips - black_pips
+                best_pip_diff = {'white': white_pips - black_pips, 'black': black_pips - white_pips}[self.move_colour]
+                next_states = self.calc_legal_next_states_generic(self, opp_move_colour, state, dice_roll)
+                for next_state in next_states:
+                    new_white_pips, new_black_pips = self.return_pips(next_state)
+                    new_pip_diff = {'white': new_white_pips - new_black_pips, 'black': new_black_pips - new_white_pips}\
+                                    [self.move_colour]
+                    best_pip_diff = max(best_pip_diff, new_pip_diff)
+                self.next_next_states[i][dice_roll] = best_pip_diff
+
+            print 'i, state, best_pip_diff = ', i, state, self.next_next_states[i]
+        quit()
+
+
+    def copy_state(self, state):
+        return {'white': copy.copy(state['white']), 'black': copy.copy(state['black'])}
 
     def pick_random_next_state(self):
         if len(self.next_states) == 0:
-            print 'no possible moves, leave state the same'
+            # print 'no possible moves, leave state the same'
             return
         elif len(self.next_states) == 1:
             i = 0
@@ -327,18 +369,32 @@ class Backgammon:
 
         return None
 
+def play_bg(x):
+    bg = Backgammon()
+    bg.play_game()
 
 
 
 if __name__ == '__main__':
+    start = time.time()
+    # p = pool.Pool()
+    # [r for r in p.imap_unordered(play_bg, range(100))]
+
     bg = Backgammon()
     bg.play_game()
+    end = time.time()
+    print 'time taken = ', end - start
     raw_input("Press Enter to continue...")
 
 
 ## todo
-# 1 connect up human player
-# 2 connect up computer player
-# 3 work out end of game
-# 4 make 1 ply cpu
-# 5 make 2 ply cpu
+# make 1 ply cpu
+# make 2 ply cpu
+# make nice gui interface to make it easy to play
+# display cpu states in gui
+# install into a website
+
+##### take a break
+
+## future things to do
+# use reinforcement learning to improve the value function ??
